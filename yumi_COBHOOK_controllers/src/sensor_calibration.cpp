@@ -4,22 +4,22 @@
 #include <string>
 #include <fstream>
 
-sensor_msgs::JointState joints_state;
+//sensor_msgs::JointState joints_state;
 
-std_msgs::Float64 left_command;
-std_msgs::Float64 right_command;
-std_msgs::Float64 left_joint_pos;
-std_msgs::Float64 right_joint_pos;
+//std_msgs::Float64 left_command;
+//std_msgs::Float64 right_command;
+//std_msgs::Float64 left_joint_pos;
+//std_msgs::Float64 right_joint_pos;
 std_msgs::Float64 pos_val;
 
-int num_joints = 14;
-int num_joints_arm = 7;
-int test_joint_number = 2;
-int left_joint_state_idx = 4;
-int right_joint_state_idx = 4;
+//int num_joints = 14;
+//int num_joints_arm = 7;
+//int test_joint_number = 2;
+//int left_joint_state_idx = 4;
+//int right_joint_state_idx = 4;
 
-std::vector<ros::Publisher> left_controller_pub(num_joints_arm);               
-std::vector<ros::Publisher> right_controller_pub(num_joints_arm);
+//std::vector<ros::Publisher> left_controller_pub(num_joints_arm);               
+//std::vector<ros::Publisher> right_controller_pub(num_joints_arm);
 
 vector<float> values1(7,0);
 vector<vector<float>>  q(10, values1);
@@ -41,14 +41,18 @@ double sampling_period = 1/sampling_freq;
 ros::Publisher left_state_pub;
 ros::Publisher right_state_pub;
 ros::Publisher pos_signal_pub;
-ros::Subscriber sub;
+//ros::Subscriber sub;
 
-bool g_quit;
+//bool g_quit;
 void quitRequested(int sig)
 {
 	g_quit = true;
-	left_command.data = 0.0;
-	right_command.data = 0.0;
+
+	for (uint i=0; i<num_joints_arm; ++i)
+	{
+		left_command.at(i).data = 0.0;
+		right_command.at(i).data = 0.0;
+	}
 
 	//left_controller_pub.at(?).publish(left_command);
 	//right_controller_pub.at(?).publish(right_command);
@@ -76,8 +80,8 @@ void send_pos_joints()
 
 		
 
-			left_command.data = pos_val.data;
-			right_command.data = pos_val.data;
+			left_command.at(i).data = pos_val.data;
+			right_command.at(i).data = pos_val.data;
 			// cout << "Publishing command" << endl;
 			left_controller_pub.at(j).publish(left_command);
 			// right_controller_pub.at(j).publish(right_command);
@@ -93,6 +97,14 @@ void send_pos_joints()
 	}
 }
 
+void rearrange_YuMi_joints(std::vector<std_msgs::Float64>& joint_pos)
+{
+    double tmp_joint;
+    tmp_joint = joint_pos[6].data;
+    for(uint i=6;i>2;i--)
+        joint_pos[i].data = joint_pos[i-1].data;
+    joint_pos[2].data = tmp_joint;
+}
 
 
 void joint_states_callback(const sensor_msgs::JointState &msg)
@@ -103,11 +115,14 @@ void joint_states_callback(const sensor_msgs::JointState &msg)
 	joints_state.velocity = msg.velocity;
 	joints_state.effort = msg.effort;
 
-	left_joint_pos.data = joints_state.position[left_joint_state_idx];
-	right_joint_pos.data = joints_state.position[right_joint_state_idx];
+	for(uint i=0;i<num_joints_arm;i++)
+   	{
+        	left_joint_pos[i].data = joints_state.position[2*(i+1)];
+       		right_joint_pos[i].data = joints_state.position[2*(i+1)+1];
+    	}
 
-	left_state_pub.publish(left_joint_pos);
-	right_state_pub.publish(right_joint_pos);
+  	 rearrange_YuMi_joints(left_joint_pos);
+   	 rearrange_YuMi_joints(right_joint_pos);
 }
 
 

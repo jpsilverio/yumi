@@ -52,6 +52,9 @@ include_directories(include
 #add_executable(test_IK_control src/test_IK_control.cpp)
 #target_link_libraries(test_IK_control ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
+add_executable(sensor_calibration src/sensor_calibration.cpp)
+target_link_libraries(sensor_calibration ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
+
 add_executable(test_MPC_pose src/test_IK_control_MPC_pose.cpp src/pose_MPC.cpp)
 target_link_libraries(test_MPC_pose ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
