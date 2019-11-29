@@ -1,11 +1,8 @@
-
 #include <yumi_test_controllers.h>
-
 
 sensor_msgs::JointState joints_state;
 trajectory_msgs::JointTrajectory left_traj;
 trajectory_msgs::JointTrajectory right_traj;
-
 
 int numSubscribersConnected = 0;
 int num_joints = 14;
