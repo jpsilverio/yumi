@@ -55,5 +55,5 @@ include_directories(include
 add_executable(test_MPC_pose src/test_IK_control_MPC_pose.cpp src/pose_MPC.cpp)
 target_link_libraries(test_MPC_pose ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
-add_executable(position_controller src/test_pos_control.cpp)
-target_link_libraries(position_controller ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
+#add_executable(position_controller src/test_pos_control.cpp)
+#target_link_libraries(position_controller ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
