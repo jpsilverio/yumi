@@ -2,18 +2,43 @@
 
 int main( int argc, char* argv[] )
 {
-	ros::init(argc, argv, "test_joint_vel_control");
+    if(argc!=2)
+    {
+        std::cout << "ERROR: specify \"position\" or \"velocity\" control, e.g. 'test_IK_control position' (nargc = " << argc << ")"
+                  << std::endl;
+        return -1;
+    }
+    /*else if(argv[1]!="position")// || argv[1]!="velocity")
+    {
+        std::cout << "ERROR: specify \"position\" or \"velocity\" control, e.g. 'test_IK_control position'"
+                  << std::endl;
+        return -1;
+    }*/
+
+    control_mode = argv[1];
+	ros::init(argc, argv, "test_joint_" + control_mode + "_vel_control");
 	ros::NodeHandle nh;
 
 	// Subscribe ROS nodes
 	sub = nh.subscribe("/yumi/joint_states", 1000, joint_states_callback);
-	sub_control_mode = nh.subscribe("/yumi/control_mode", 1000, control_mode_callback);
+	sub_joint_solver = nh.subscribe("/yumi/joint_solver", 1000, joint_solver_callback);
 
 	// Initialize publishers
 	for(uint i=0;i<num_joints_arm;i++)
 	{
-		left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_vel_controller_" + std::to_string(i+1) + "_l/command", 1000);
-		right_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_vel_controller_" + std::to_string(i+1) + "_r/command", 1000);
+	    if(control_mode=="position") {
+            left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>(
+                    "/yumi/joint_pos_controller_" + std::to_string(i + 1) + "_l/command", 1000);
+            right_controller_pub.at(i) = nh.advertise<std_msgs::Float64>(
+                    "/yumi/joint_pos_controller_" + std::to_string(i + 1) + "_r/command", 1000);
+        }
+        else if(control_mode=="velocity") {
+            left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>(
+                    "/yumi/joint_vel_controller_" + std::to_string(i + 1) + "_l/command", 1000);
+            right_controller_pub.at(i) = nh.advertise<std_msgs::Float64>(
+                    "/yumi/joint_vel_controller_" + std::to_string(i + 1) + "_r/command", 1000);
+        }
+
 	}
 	
 	signal(SIGTERM, quitRequested);
@@ -32,15 +57,15 @@ int main( int argc, char* argv[] )
 
 	// Initialize chains
 	KDL::Chain left_arm_chain, right_arm_chain;
-	yumi_tree.getChain("yumi_body","yumi_link_7_l",left_arm_chain);		
+	yumi_tree.getChain("yumi_body","yumi_link_7_l",left_arm_chain);
 	yumi_tree.getChain("yumi_body","yumi_link_7_r",right_arm_chain);		
 
 	std::cout << "Number of joints in left arm chain: " << left_arm_chain.getNrOfJoints() << std::endl;
 	std::cout << "Number of joints in right arm chain: " << right_arm_chain.getNrOfJoints() << std::endl;
 
-	// Forward kinematics "solver" (why a solver?)
-	KDL::ChainFkSolverPos_recursive fk_left = KDL::ChainFkSolverPos_recursive(left_arm_chain);
-	KDL::ChainFkSolverPos_recursive fk_right = KDL::ChainFkSolverPos_recursive(right_arm_chain);
+    // Forward kinematics "solver" (why a solver?)
+    KDL::ChainFkSolverPos_recursive fk_left = KDL::ChainFkSolverPos_recursive(left_arm_chain);
+    KDL::ChainFkSolverPos_recursive fk_right = KDL::ChainFkSolverPos_recursive(right_arm_chain);
 
 	// Inverse kinematics solver (just to get the Jacobian matrix)
 	KDL::ChainJntToJacSolver jnt_to_jac_solver_left(left_arm_chain);		
@@ -53,16 +78,18 @@ int main( int argc, char* argv[] )
 	KDL::JntArray joints_r_arm = KDL::JntArray(right_arm_chain.getNrOfJoints());
 	KDL::JntArray u_left = KDL::JntArray(left_arm_chain.getNrOfJoints());
 	KDL::JntArray u_right = KDL::JntArray(right_arm_chain.getNrOfJoints());
-	KDL::SetToZero(joints_l_arm);
-	KDL::SetToZero(joints_r_arm);
-	KDL::SetToZero(u_left);
-	KDL::SetToZero(u_right);
 
 	// Initialize KDL Jacobians
 	KDL::Jacobian J_left;
 	KDL::Jacobian J_right;
 	J_left.resize(left_arm_chain.getNrOfJoints());
 	J_right.resize(right_arm_chain.getNrOfJoints());
+    for(uint i=0; i< num_joints_arm; i++)
+            q_homing_left(i) = q_homing_init[i];
+    q_homing_right = q_homing_left;
+    q_homing_right(0) = -q_homing_right(0);          // two joints need flipping
+    q_homing_right(2) = -q_homing_right(2);
+
 	// Initialize Armadillo Jacobians
 	arma::mat arma_J_left;
 	arma::mat arma_J_right;
@@ -92,8 +119,7 @@ int main( int argc, char* argv[] )
 //	rot_right_desired.DoRotY(1.5);
 //	rot_right_desired.DoRotZ(1.5);
 	
-
-	// KDL twist
+	// KDL twists (for the desired task space commands)
 	KDL::Vector v_l(0.0,0.0,0.0);
 	KDL::Vector v_r(0.0,0.0,0.0);
 	KDL::Vector rot_l(0.0,0.0,0.0);
@@ -103,29 +129,11 @@ int main( int argc, char* argv[] )
 	arma::vec arma_twist_left(6);
 	arma::vec arma_twist_right(6);
 
-	// Homing joint references
-	KDL::JntArray q_homing_left = KDL::JntArray(left_arm_chain.getNrOfJoints());
-	KDL::JntArray q_homing_right = KDL::JntArray(right_arm_chain.getNrOfJoints());
-
 	// Initialize rate, sleep and spin once
 	ros::Rate rate(50); // 50 hz update rate
 	rate.sleep();
 	ros::spinOnce();	// if I don't sleep AND spin once, all joints will be read 0. Why? 
 
-	// Initialize homing joints
-	update_JntArray(joints_l_arm,joints_r_arm);
-	q_homing_left = joints_l_arm; 
-	q_homing_right = joints_r_arm;
-	//std::cout<<"Q homing left: "; print_joint_values(q_homing_left);
-        //std::cout<<"Q homing right: "; print_joint_values(q_homing_right);
-
-	// Control mode sanity check
-	if(control_mode != "")
-	{
-		std::cout << std::endl << "ERROR: Set control_mode=\"\" in the declaration, compile and run again." << std::endl<< std::endl;
-		return -1;
-	}
-	
 	while( !g_quit && ros::ok() )
   	{
 		// -- Get Jacobian
@@ -143,6 +151,8 @@ int main( int argc, char* argv[] )
 		// -- Compute error in task space
 		fk_left.JntToCart(joints_l_arm,pose_left);
 		fk_right.JntToCart(joints_r_arm,pose_right);
+
+		// left end-effector
 		twist_left.vel = desired_pos_left - pose_left.p;
 		tmp = pose_left.M;
 		tmp.SetInverse();		
@@ -150,6 +160,7 @@ int main( int argc, char* argv[] )
 		twist_left.rot = tmp.GetRot();
 		KDL_to_arma(twist_left,arma_twist_left);
 
+        // right end-effector
 		twist_right.vel = desired_pos_right - pose_right.p;
 		tmp = pose_right.M;
 		tmp.SetInverse();		
@@ -160,14 +171,13 @@ int main( int argc, char* argv[] )
 //		std::cout << "Right Hand:" << pose_right.p.data[0] <<" " << pose_right.p.data[1] <<" " << pose_right.p.data[2] <<" " << std::endl;
 
 		// -- Generate joint commands with KDL solver
-		if(control_mode=="IK solver")
+		if(joint_solver=="KDL solver")
 		{
 			pinv_solver_left.CartToJnt(joints_l_arm,twist_left,u_left);
 			pinv_solver_right.CartToJnt(joints_r_arm,twist_right,u_right);
 		}
-
 		// -- Generate joint commands with my pseudo-inverse
-		else if(control_mode=="pinv")
+		else if(joint_solver=="pinv")
 		{
 			pinv_J_left  = arma::solve(arma_J_left.t()*arma_J_left + arma::eye(num_joints_arm,num_joints_arm)*rcond,arma_J_left.t());	// A\B
 			pinv_J_right = arma::solve(arma_J_right.t()*arma_J_right + arma::eye(num_joints_arm,num_joints_arm)*rcond,arma_J_right.t());
@@ -177,7 +187,7 @@ int main( int argc, char* argv[] )
 			arma_to_KDL(arma_u_right,u_right);	
 		}
 		// -- Generate joint homing commands
-		else if(control_mode=="homing")
+		else if(joint_solver=="homing")
 		{
 			KDL::Subtract(q_homing_left,joints_l_arm,u_left);
 			KDL::Subtract(q_homing_right,joints_r_arm,u_right);
@@ -186,139 +196,25 @@ int main( int argc, char* argv[] )
 		// -- Prepare for publishing
 		for(uint i=0;i<num_joints_arm;i++)
 		{
-			left_command.at(i).data = u_left(i);
-			right_command.at(i).data = u_right(i);
+            if(control_mode=="velocity")
+            {
+                left_command.at(i).data = u_left(i);
+                right_command.at(i).data = u_right(i);
+            }
+            if(control_mode=="position")
+            {
+                left_command.at(i).data = u_left(i) * 0.1 + joints_l_arm(i);
+                right_command.at(i).data = u_right(i) * 0.1 + joints_r_arm(i);
+            }
 		}
 
 		// -- Send joint commands to robot
 		publish_commands();
 
-		// spin and sleep
+		// -- ROS spin and sleep
 		ros::spinOnce();
 		rate.sleep();
 	}
 
 	return EXIT_SUCCESS;
 }
-
-void publish_commands()
-{
-	// The urdf model has joint 7 right after joint 2 and the rest shifted forward
-	for(uint i=0;i<2;i++)
-	{
-		left_controller_pub.at(i).publish(left_command.at(i));
-		right_controller_pub.at(i).publish(right_command.at(i));
-	}
-	for(uint i=2;i<num_joints_arm-1;i++)
-	{
-		left_controller_pub.at(i).publish(left_command.at(i+1));
-		right_controller_pub.at(i).publish(right_command.at(i+1));
-	}
-	left_controller_pub.at(num_joints_arm-1).publish(left_command.at(2));
-	right_controller_pub.at(num_joints_arm-1).publish(right_command.at(2));
-
-}
-
-void print_joint_values(const KDL::JntArray& q)
-{
-	std::cout << "[";
-	for(uint i=0;i<num_joints_arm;i++)
-		std::cout << q(i) << " ";
-	std::cout << "]" << std::endl;
-}
-
-void print_joint_values(const arma::vec& q)
-{
-	std::cout << "[";
-	for(uint i=0;i<num_joints_arm;i++)
-		std::cout << q(i) << " ";
-	std::cout << "]" << std::endl;
-}
-
-void print_Jacobian(KDL::Jacobian J)
-{
-	for(uint i=0;i<J.rows();i++)
-	{
-		for(uint j=0;j<J.columns();j++)
-			std::cout << " " << J(i,j);
-		std::cout << std::endl;
-	}
-	std::cout << std::endl;
-}
-
-void quitRequested(int sig)
-{
-	g_quit = true;
-	
-	for(uint i=0;i<num_joints_arm;i++)
-	{
-		left_command.at(i).data = 0.0;
-		right_command.at(i).data = 0.0;
-	}
-	publish_commands();
-	ros::shutdown();
-}
-
-void rearrange_YuMi_joints(std::vector<std_msgs::Float64>& joint_pos)
-{
-	double tmp_joint;
-	tmp_joint = joint_pos[6].data;
-	for(uint i=6;i>2;i--)
-		joint_pos[i].data = joint_pos[i-1].data;
-	joint_pos[2].data = tmp_joint;
-}
-
-void joint_states_callback(const sensor_msgs::JointState &msg)
-{
-	// ROS_INFO("Joint states update!");
-	joints_state.name = msg.name;
-	joints_state.position = msg.position;
-	joints_state.velocity = msg.velocity;
-	joints_state.effort = msg.effort;
-
-	for(uint i=0;i<num_joints_arm;i++)
-	{
-		left_joint_pos[i].data = joints_state.position[2*(i+1)];
-		right_joint_pos[i].data = joints_state.position[2*(i+1)+1];
-	}
-
-	rearrange_YuMi_joints(left_joint_pos);
-	rearrange_YuMi_joints(right_joint_pos);
-}
-
-void control_mode_callback(const std_msgs::String& msg)
-{
-	control_mode = msg.data;
-	std::cout << "Switched control mode to "<< control_mode;
-}
-
-void update_JntArray(KDL::JntArray& l_arm, KDL::JntArray& r_arm)
-{
-	for(int i=0;i<num_joints_arm;i++){
-		l_arm(i) = left_joint_pos[i].data;
-		r_arm(i) = right_joint_pos[i].data;
-	}
-}
-
-void KDL_to_arma(const KDL::Jacobian& KDL_jac, arma::mat& arma_jac)
-{
-	for(unsigned int i = 0; i<KDL_jac.rows(); i++){
-		for(unsigned int j = 0; j<KDL_jac.columns(); j++){
-			arma_jac(i,j) = KDL_jac(i,j);
-		}
-	}
-}
-
-void KDL_to_arma(const KDL::Twist& KDL_twist, arma::vec& arma_twist)
-{
-	for(unsigned int i=0; i<6; i++)
-		arma_twist(i) = KDL_twist(i);
-}
-
-void arma_to_KDL(const arma::vec& arma_jnt, KDL::JntArray& jnt_q)
-{
-	for(unsigned int i=0; i<num_joints_arm; i++)
-		jnt_q(i) = arma_jnt(i);
-}
-
-

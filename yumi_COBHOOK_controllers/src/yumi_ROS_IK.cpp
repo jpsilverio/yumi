@@ -1,4 +1,28 @@
-#include "yumi_test_controllers.h"
+// ROS
+#include <ros/ros.h>
+#include <sensor_msgs/JointState.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/String.h>
+
+// KDL
+#include <kdl/kdl.hpp>
+#include <kdl/jntarray.hpp>
+#include <kdl/jacobian.hpp>
+#include <armadillo>
+
+// Reminder: declare global variables here as 'extern' instead of including the header -- that would result in
+// multiple declaration errors when linking
+extern int num_joints_arm;
+extern std::vector<std_msgs::Float64> left_command;
+extern std::vector<std_msgs::Float64> right_command;
+extern std::vector<ros::Publisher> left_controller_pub;
+extern std::vector<ros::Publisher> right_controller_pub;
+extern bool g_quit;
+extern sensor_msgs::JointState joints_state;
+extern std::vector<std_msgs::Float64> left_joint_pos;
+extern std::vector<std_msgs::Float64> right_joint_pos;
+extern std::string joint_solver;        // to choose what IK solver to use or joint space tracking instead
+extern std::string control_mode;        // position or velocity
 
 void publish_commands()
 {
@@ -15,7 +39,6 @@ void publish_commands()
 	}
 	left_controller_pub.at(num_joints_arm-1).publish(left_command.at(2));
 	right_controller_pub.at(num_joints_arm-1).publish(right_command.at(2));
-
 }
 
 void print_joint_values(const KDL::JntArray& q)
@@ -48,11 +71,18 @@ void print_Jacobian(KDL::Jacobian J)
 void quitRequested(int sig)
 {
 	g_quit = true;
-	
 	for(uint i=0;i<num_joints_arm;i++)
 	{
-		left_command.at(i).data = 0.0;
-		right_command.at(i).data = 0.0;
+        if(control_mode=="position")
+        {
+            left_command.at(i).data = left_joint_pos[i].data;
+            right_command.at(i).data = right_joint_pos[i].data;
+        }
+        else if(control_mode=="velocity")
+        {
+            left_command.at(i).data = 0.0;
+            right_command.at(i).data = 0.0;
+        }
 	}
 	publish_commands();
 	ros::shutdown();
@@ -85,10 +115,10 @@ void joint_states_callback(const sensor_msgs::JointState &msg)
 	rearrange_YuMi_joints(right_joint_pos);
 }
 
-void control_mode_callback(const std_msgs::String& msg)
+void joint_solver_callback(const std_msgs::String& msg)
 {
-	control_mode = msg.data;
-	std::cout << "Switched control mode to "<< control_mode;
+	joint_solver = msg.data;
+	std::cout << "Switched control mode to "<< joint_solver;
 }
 
 void update_JntArray(KDL::JntArray& l_arm, KDL::JntArray& r_arm)
@@ -119,4 +149,3 @@ void arma_to_KDL(const arma::vec& arma_jnt, KDL::JntArray& jnt_q)
 	for(unsigned int i=0; i<num_joints_arm; i++)
 		jnt_q(i) = arma_jnt(i);
 }
-
