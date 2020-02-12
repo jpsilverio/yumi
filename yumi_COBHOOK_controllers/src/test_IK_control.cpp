@@ -22,10 +22,13 @@ int main( int argc, char* argv[] )
 	// Subscribe ROS nodes
 	sub = nh.subscribe("/yumi/joint_states", 1000, joint_states_callback);
 	sub_joint_solver = nh.subscribe("/yumi/joint_solver", 1000, joint_solver_callback);
+	ros::Subscriber sub_left_pose  = nh.subscribe("/yumi/left_pose_ref", 1000, left_pose_callback);
+    ros::Subscriber sub_right_pose = nh.subscribe("/yumi/right_pose_ref", 1000, right_pose_callback);
 
 	// Initialize publishers
 	for(uint i=0;i<num_joints_arm;i++)
 	{
+	    // The robot can either be controlled in position or velocity (make sure to launch the correct .launch)
 	    if(control_mode=="position") {
             left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>(
                     "/yumi/joint_pos_controller_" + std::to_string(i + 1) + "_l/command", 1000);
@@ -40,7 +43,6 @@ int main( int argc, char* argv[] )
         }
 
 	}
-	
 	signal(SIGTERM, quitRequested);
 	signal(SIGINT, quitRequested);
 	signal(SIGHUP, quitRequested);
@@ -52,16 +54,16 @@ int main( int argc, char* argv[] )
 		return false;
 	}
 
-	std::cout << "Number of joints in tree: " << yumi_tree.getNrOfJoints() << std::endl;
-	std::cout << "Number of segments in tree: " << yumi_tree.getNrOfSegments() << std::endl;
+	//std::cout << "Number of joints in tree: " << yumi_tree.getNrOfJoints() << std::endl;
+	//std::cout << "Number of segments in tree: " << yumi_tree.getNrOfSegments() << std::endl;
 
 	// Initialize chains
 	KDL::Chain left_arm_chain, right_arm_chain;
 	yumi_tree.getChain("yumi_body","yumi_link_7_l",left_arm_chain);
-	yumi_tree.getChain("yumi_body","yumi_link_7_r",right_arm_chain);		
+	yumi_tree.getChain("yumi_body","yumi_link_7_r",right_arm_chain);
 
-	std::cout << "Number of joints in left arm chain: " << left_arm_chain.getNrOfJoints() << std::endl;
-	std::cout << "Number of joints in right arm chain: " << right_arm_chain.getNrOfJoints() << std::endl;
+	//std::cout << "Number of joints in left arm chain: " << left_arm_chain.getNrOfJoints() << std::endl;
+	//std::cout << "Number of joints in right arm chain: " << right_arm_chain.getNrOfJoints() << std::endl;
 
     // Forward kinematics "solver" (why a solver?)
     KDL::ChainFkSolverPos_recursive fk_left = KDL::ChainFkSolverPos_recursive(left_arm_chain);
@@ -110,10 +112,6 @@ int main( int argc, char* argv[] )
 	// KDL pose
 	KDL::Frame pose_left;
 	KDL::Frame pose_right;
-	KDL::Vector desired_pos_left(0.2,0.5,0.6);
-	KDL::Vector desired_pos_right(0.2,-0.5,0.6);
-	KDL::Rotation rot_left_desired;		// initialized with identity
-	KDL::Rotation rot_right_desired;	
 	KDL::Rotation tmp;
 //	rot_left_desired.DoRotY(2.0);
 //	rot_right_desired.DoRotY(1.5);
@@ -130,12 +128,17 @@ int main( int argc, char* argv[] )
 	arma::vec arma_twist_right(6);
 
 	// Initialize rate, sleep and spin once
-	ros::Rate rate(50); // 50 hz update rate
+	ros::Rate rate(100); // Hz
 	rate.sleep();
-	ros::spinOnce();	// if I don't sleep AND spin once, all joints will be read 0. Why? 
+	ros::spinOnce();	// if I don't sleep AND spin once, all joints will be read 0. Why?
+
+    ros::Time s_ros, e_ros;
 
 	while( !g_quit && ros::ok() )
   	{
+	    t0 = Clock::now();
+        s_ros = ros::Time::now();
+
 		// -- Get Jacobian
 		// Read joint angles
 		update_JntArray(joints_l_arm,joints_r_arm);
@@ -192,6 +195,8 @@ int main( int argc, char* argv[] )
 			KDL::Subtract(q_homing_left,joints_l_arm,u_left);
 			KDL::Subtract(q_homing_right,joints_r_arm,u_right);
 		}
+		saturate(u_left);     // limits joint velocities to DQ_MAX
+        saturate(u_right);     // limits joint velocities to DQ_MAX
 
 		// -- Prepare for publishing
 		for(uint i=0;i<num_joints_arm;i++)
@@ -203,17 +208,30 @@ int main( int argc, char* argv[] )
             }
             if(control_mode=="position")
             {
-                left_command.at(i).data = u_left(i) * 0.1 + joints_l_arm(i);
-                right_command.at(i).data = u_right(i) * 0.1 + joints_r_arm(i);
+                //left_command.at(i).data = u_left(i) * rate.expectedCycleTime().toSec() + joints_l_arm(i);
+                //right_command.at(i).data = u_right(i) * rate.expectedCycleTime().toSec() + joints_r_arm(i);
+                left_command.at(i).data = u_left(i) + joints_l_arm(i);
+                right_command.at(i).data = u_right(i)  + joints_r_arm(i);
             }
 		}
 
-		// -- Send joint commands to robot
+		// -- Publish the computed commands in the appropriate topics
 		publish_commands();
 
 		// -- ROS spin and sleep
 		ros::spinOnce();
 		rate.sleep();
+
+		// Some time analysis, I'll get back to this later
+		/*
+        t1 = Clock::now();
+        e_ros = ros::Time::now();
+        milliseconds ms = std::chrono::duration_cast<milliseconds>(t1 - t0);
+        cout << rate.expectedCycleTime().toSec()  << endl;
+        cout << rate.cycleTime().toSec() << endl;
+        cout << (e_ros - s_ros).toNSec() * 1e-6 << " ROS time in milliseconds\n";
+        cout << ms.count() << " milliseconds\n";
+        cout << endl;*/
 	}
 
 	return EXIT_SUCCESS;
