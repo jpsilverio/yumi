@@ -1,21 +1,14 @@
 #include <yumi_test_controllers.h>
 
-sensor_msgs::JointState joints_state;
 trajectory_msgs::JointTrajectory left_traj;
 trajectory_msgs::JointTrajectory right_traj;
 
 int numSubscribersConnected = 0;
-int num_joints = 14;
-int num_joints_arm = 7;
 bool left_command_sent = false;
 bool right_command_sent = false;
 
 ros::Publisher left_pub;
 ros::Publisher right_pub;
-ros::Subscriber sub;
-
-
-
 
 void left_vel_controller_callback(const ros::SingleSubscriberPublisher& pub)
 {
@@ -31,8 +24,6 @@ void right_vel_controller_callback(const ros::SingleSubscriberPublisher& pub)
 }
 
 
-
-
 void joint_states_callback(const sensor_msgs::JointState &msg)
 {
 	// ROS_INFO("Joint states update!");
@@ -46,15 +37,22 @@ void joint_states_callback(const sensor_msgs::JointState &msg)
 		trajectory_msgs::JointTrajectoryPoint p;
 		for (int i = 0; i < num_joints; i+=2)
 		{
+            joints_state
+		    std::cout << joints_state.position[i] << std::endl;
 	        p.positions.push_back(joints_state.position[i]);
-	        // p.velocities.push_back(0.0);
+            std::cout << p.positions << std::endl;
+	        //p.velocities.push_back(0.0);
+
 	        // p.accelerations.push_back(0.0);
 	        p.time_from_start = ros::Duration(1.0);
 		}
 
-		int joint_test_idx = 2;
+		int joint_test_idx = 0;
+		//p.
+		std::cout << p.positions[joint_test_idx] << std::endl;
 		p.positions[joint_test_idx] = p.positions[joint_test_idx] - 0.5;
-		// p.velocities[joint_test_idx] = -1.0;
+        std::cout << p.positions[joint_test_idx] << std::endl;
+		//p.velocities[joint_test_idx] = 0.1;
 
 		left_traj.points.push_back(p);
 		left_traj.header.stamp = ros::Time(0.0);

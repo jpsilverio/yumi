@@ -42,21 +42,20 @@ include_directories(include
   ${ARMADILLO_INCLUDE_DIRS}
 )
 
-
 #add_executable(test_traj_vel_control src/test_traj_vel_control.cpp)
 #target_link_libraries(test_traj_vel_control ${catkin_LIBRARIES})
 
 #add_executable(test_vel_control src/test_vel_control.cpp)
 #target_link_libraries(test_vel_control ${catkin_LIBRARIES})
 
-#add_executable(test_IK_control src/test_IK_control.cpp)
-#target_link_libraries(test_IK_control ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
+add_executable(test_IK_control src/test_IK_control.cpp src/yumi_ROS_IK.cpp)
+target_link_libraries(test_IK_control ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
-add_executable(sensor_calibration src/sensor_calibration.cpp)
-target_link_libraries(sensor_calibration ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
+#add_executable(sensor_calibration src/sensor_calibration.cpp)
+#target_link_libraries(sensor_calibration ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
-add_executable(test_MPC_pose src/test_IK_control_MPC_pose.cpp src/pose_MPC.cpp)
-target_link_libraries(test_MPC_pose ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
+#add_executable(test_MPC_pose src/test_IK_control_MPC_pose.cpp src/pose_MPC.cpp)
+#target_link_libraries(test_MPC_pose ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})
 
 #add_executable(position_controller src/test_pos_control.cpp)
 #target_link_libraries(position_controller ${catkin_LIBRARIES} ${ARMADILLO_LIBRARIES})

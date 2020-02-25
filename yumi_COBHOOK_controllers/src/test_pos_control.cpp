@@ -1,4 +1,3 @@
-
 #include <yumi_test_controllers.h>
 #include <vector>
 
@@ -119,9 +118,6 @@ void addValues(vector<float>& q,vector<float> angleValues)
 		q.push_back (angleValues[j]);
 	}
 }
-
-
-
 
 int main( int argc, char* argv[] )
 {

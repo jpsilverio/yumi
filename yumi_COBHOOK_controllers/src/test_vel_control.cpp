@@ -1,6 +1,4 @@
-
 #include <yumi_test_controllers.h>
-
 
 sensor_msgs::JointState joints_state;
 

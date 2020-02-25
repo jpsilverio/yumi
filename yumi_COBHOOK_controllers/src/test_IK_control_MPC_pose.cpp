@@ -18,8 +18,10 @@ int main( int argc, char* argv[] )
     // Initialize publishers
     for(uint i=0;i<num_joints_arm;i++)
     {
-        left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_vel_controller_" + std::to_string(i+1) + "_l/command", 1000);
-        right_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_vel_controller_" + std::to_string(i+1) + "_r/command", 1000);
+//        left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_vel_controller_" + std::to_string(i+1) + "_l/command", 1000);
+//       right_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_vel_controller_" + std::to_string(i+1) + "_r/command", 1000);
+        left_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_pos_controller_" + std::to_string(i+1) + "_l/command", 1000);
+        right_controller_pub.at(i) = nh.advertise<std_msgs::Float64>("/yumi/joint_pos_controller_" + std::to_string(i+1) + "_r/command", 1000);
     }
 
     signal(SIGTERM, quitRequested);
@@ -156,8 +158,18 @@ int main( int argc, char* argv[] )
     update_JntArray(joints_l_arm,joints_r_arm);
     q_homing_left = joints_l_arm;
     q_homing_right = joints_r_arm;
-    //std::cout<<"Q homing left: "; print_joint_values(q_homing_left);
-    //std::cout<<"Q homing right: "; print_joint_values(q_homing_right);
+
+    for(uint i=0; i<left_arm_chain.getNrOfJoints(); i++)
+    {
+        q_homing_left(i)=0.0;
+        q_homing_right(i)=0.0;
+    }
+
+    q_homing_left(1)=-0.75;
+    q_homing_right(1)=-0.75;
+
+    std::cout<<"Q homing left: "; print_joint_values(q_homing_left);
+    std::cout<<"Q homing right: "; print_joint_values(q_homing_right);
 
     // Control mode sanity check
     if(control_mode != "")
@@ -254,6 +266,8 @@ int main( int argc, char* argv[] )
 //		std::cout << "Left Hand:" << pose_left.p.data[0] <<" " << pose_left.p.data[1] <<" " << pose_left.p.data[2] << " " << std::endl;
 //		std::cout << "Right Hand:" << pose_right.p.data[0] <<" " << pose_right.p.data[1] <<" " << pose_right.p.data[2] <<" " << std::endl;
 
+        control_mode = "homing";
+
         // -- Generate joint commands with KDL solver
         if(control_mode=="IK-solver")
         {
@@ -285,8 +299,8 @@ int main( int argc, char* argv[] )
         // -- Prepare for publishing
         for(uint i=0;i<num_joints_arm;i++)
         {
-            left_command.at(i).data = u_left(i);
-            right_command.at(i).data = u_right(i);
+            left_command.at(i).data = joints_l_arm(i) + u_left(i)*1/50;
+            right_command.at(i).data = joints_r_arm(i) + u_right(i)*1/50;
         }
 
         // -- Send joint commands to robot
@@ -378,8 +392,11 @@ void joint_states_callback(const sensor_msgs::JointState &msg)
 
     for(uint i=0;i<num_joints_arm;i++)
     {
-        left_joint_pos[i].data = joints_state.position[2*(i+1)];
-        right_joint_pos[i].data = joints_state.position[2*(i+1)+1];
+  //      left_joint_pos[i].data = joints_state.position[2*(i+1)];
+   //     right_joint_pos[i].data = joints_state.position[2*(i+1)+1];
+
+        left_joint_pos[i].data = joints_state.position[2*i];
+        right_joint_pos[i].data = joints_state.position[2*i+1];
     }
 
     rearrange_YuMi_joints(left_joint_pos);
